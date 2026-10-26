@@ -1,7 +1,7 @@
 {
   "name": "tanstack-ai-flowspeech",
-  "version": "0.1.0",
-  "description": "FlowSpeech text-to-speech adapter for TanStack AI.",
+  "version": "0.2.0",
+  "description": "FlowSpeech public API v1 asynchronous text-to-speech adapter for TanStack AI.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,13 +15,24 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
+    "check:runtime": "node scripts/check-runtime.mjs",
+    "test:runtime": "node --test tests/runtime-guard.mjs",
+    "pretest": "npm run check:runtime",
+    "prebuild": "npm run check:runtime",
+    "pretypecheck": "npm run check:runtime",
+    "pretest:dist": "npm run check:runtime",
+    "preaudit:package": "npm run check:runtime",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run test && npm run build"
+    "prepublishOnly": "npm run check:runtime && npm run test:runtime && npm test && npm run typecheck && npm run build && npm run test:dist",
+    "test:dist": "node --test tests/artifact-smoke.mjs",
+    "prepack": "npm run build && npm run test:dist",
+    "audit:package": "node tests/package-audit.mjs"
   },
   "repository": {
     "type": "git",
@@ -46,9 +57,10 @@
   "devDependencies": {
     "@tanstack/ai": "^0.45.1",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "@types/node": "24.13.3"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }
