@@ -1,14 +1,20 @@
 # TanStack AI FlowSpeech Adapter
 
-## Unreleased Security Follow-up
+## 0.2.1 Security Update
 
 HTTP and terminal-job errors use fixed local messages, including errors sent to the host logger. Bounded diagnostic tokens exclude the configured API key and API-only header values. An interrupted body retains HTTP status and Retry-After; permanent HTTP failures never retry. Errors may expose retryAfterMs alongside validated recovery IDs.
 
 A server-side FlowSpeech public API v1 adapter for TanStack AI's `generateSpeech` activity. The adapter waits for the asynchronous job and downloads WAV audio, then encodes those bytes locally as base64 to preserve TanStack's `TTSResult`. The v1 API itself does not return base64.
 
-## Local installation
+## Installation
 
 Requires Node.js 22 or newer and `@tanstack/ai ^0.45.1`.
+
+```bash
+npm install @tanstack/ai tanstack-ai-flowspeech@0.2.1
+```
+
+To build and verify a source checkout:
 
 ```bash
 npm ci --ignore-scripts
@@ -17,8 +23,6 @@ npm run typecheck
 npm run build
 npm run test:dist
 npm pack
-# From your application:
-npm install @tanstack/ai /path/to/tanstack-ai-flowspeech-0.2.0.tgz
 ```
 
 Set `FLOWSPEECH_API_KEY` in the server environment, or pass `apiKey` to the adapter. Never use browser code for API credentials.
@@ -126,7 +130,7 @@ Full API contract: [FlowSpeech public API](https://flowspeech.io/docs/public-api
 
 ## Development and release status
 
-These are local 0.2.0 release candidates. The npm-name audit on 2026-10-26 returned 404; do not assume an earlier npm release exists or claim this version is published. The GitHub repository exists independently of npm availability. Publication is a separate maintainer/coordinator action.
+Version 0.2.0 is the previous published API v1 release. Version 0.2.1 adds the safety fixes described above. Historical registry metadata and old installed versions are not changed by upgrading the source repository.
 
 Install locked dependencies, then run the package checks and pack locally. Tests use only fake transports and synthetic WAV data; they do not spend generation credits. See `RELEASE_CHECKLIST.md` for maintainer release steps.
 

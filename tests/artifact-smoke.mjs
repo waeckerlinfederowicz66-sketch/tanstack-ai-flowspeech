@@ -87,7 +87,7 @@ test('built client recovers from invalid WAV without creating a second job', asy
   assert.equal(calls.filter(([, init]) => init.method === 'POST').length, 1)
 })
 test('packed exports and release metadata', () => {
-  assert.equal(pkg.version, '0.2.0')
+  assert.equal(pkg.version, '0.2.1')
   assert.equal(typeof api.FlowSpeechClient, 'function')
   assert.equal(typeof api.FlowSpeechError, 'function')
   assert.ok(readFileSync(new URL('dist/index.d.ts', root), 'utf8').includes('FlowSpeech'))

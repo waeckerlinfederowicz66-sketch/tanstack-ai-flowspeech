@@ -1,9 +1,8 @@
-# Future release checklist: tanstack-ai-flowspeech
+# Release checklist: tanstack-ai-flowspeech 0.2.1
 
-The 0.2.0 package is already published. The subsequent security fixes are
-source-only and unreleased. Do not overwrite 0.2.0 or reuse its artifact names
-for a future release. Select a new unpublished version and reverify its exact
-artifacts before a separately authorized publication.
+The previous 0.2.0 package remains unchanged. Release 0.2.1 packages the reviewed
+safety fixes; verify its exact artifacts and registry read-back before recording
+publication. Do not overwrite 0.2.0 or move its tag.
 
 ## Required before any external write
 
@@ -16,9 +15,7 @@ artifacts before a separately authorized publication.
 
 ## Local verification
 
-The commands below show the historical 0.2.0 artifact names. For a future
-release, replace them with the selected new version and use a fresh output
-directory. Never overwrite the retained registry artifacts.
+Use fresh 0.2.1 output directories. Never overwrite retained registry artifacts.
 
 Use Node 22.23.2 (the verified local runtime) or the CI matrix's Node 24.19.0.
 Ensure the selected runtime's bin directory is first in PATH before invoking npm;
@@ -39,10 +36,10 @@ npm run test:dist
 npm pack --dry-run
 npm pack
 mkdir -p .cache/packed
-tar -xzf tanstack-ai-flowspeech-0.2.0.tgz -C .cache/packed
+tar -xzf tanstack-ai-flowspeech-0.2.1.tgz -C .cache/packed
 FLOWSPEECH_ARTIFACT_ROOT=.cache/packed/package npm run test:dist
 npm run audit:package
-shasum -a 256 tanstack-ai-flowspeech-0.2.0.tgz
+shasum -a 256 tanstack-ai-flowspeech-0.2.1.tgz
 ```
 
 The tarball allowlist is dist, README, CHANGELOG, LICENSE, package metadata.

@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.2.0 - 2026-10-26 (unreleased)
+## 0.2.1 - 2026-10-27
+
+- Use local error messages and reject reflected API credentials or private URLs in diagnostics.
+- Preserve received HTTP status and Retry-After through interrupted response bodies; do not retry permanent failures.
+- Restrict package contents and verify clean directory-publish metadata before release.
+
+## 0.2.0 - 2026-10-26
 
 - Validate complete RIFF/WAVE chunks and 24 kHz mono 16-bit PCM data; preserve valid bytes, reject malformed downloads and allow download-only recovery.
 - Correct quota documentation to canonical `subscription`, retaining optional `entitlement` compatibility.
@@ -15,5 +21,5 @@
 - Update server-only credential/subscription documentation and migration guidance.
 
 0.1.0 identifies the original repository code, not a verified npm release. Registry
-availability was unverified/404 during the 2026-10-26 audit. Publication of 0.2.0 is
-a separate maintainer action.
+availability was initially unverified/404 during the 2026-10-26 audit. Version
+0.2.0 was subsequently published; its historical metadata remains unchanged.

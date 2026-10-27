@@ -1,6 +1,6 @@
 {
   "name": "tanstack-ai-flowspeech",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "FlowSpeech public API v1 asynchronous text-to-speech adapter for TanStack AI.",
   "license": "MIT",
   "type": "module",

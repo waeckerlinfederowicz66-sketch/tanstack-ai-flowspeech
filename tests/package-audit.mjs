@@ -35,7 +35,7 @@ function scan(relative = '') {
   }
 }
 scan()
-assert.equal(pkg.version, '0.2.0')
+assert.equal(pkg.version, '0.2.1')
 for (const file of ['dist/index.js', 'dist/index.d.ts', 'CHANGELOG.md']) assert.ok(lstatSync(join(root, file)).isFile())
 const tarball = process.env.FLOWSPEECH_ARTIFACT_ARCHIVE ?? pkg.name + '-' + pkg.version + '.tgz'
 const sha256 = createHash('sha256').update(readFileSync(tarball)).digest('hex')
