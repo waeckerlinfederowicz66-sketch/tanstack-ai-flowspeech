@@ -10,6 +10,38 @@ const root = process.env.FLOWSPEECH_ARTIFACT_ROOT
   : new URL('../', import.meta.url)
 const pkg = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'))
 const api = await import(new URL('dist/index.js', root).href)
+
+test('built errors reject reflected secrets and private URLs', async () => {
+  const key = 'review_secret_canary';
+  const privateUrl = 'https://storage.example.test/private.wav?signature=review-only';
+  for (const value of [key, privateUrl]) {
+    const client = new api.FlowSpeechClient({ apiKey: key, fetch: async () =>
+      json({ error: { code: value, message: value }, traceId: value }, 403) });
+    await assert.rejects(client.getQuota(), error =>
+      error.status === 403 && error.code === 'http_error' && error.traceId === undefined &&
+      !String(error).includes(value) && !JSON.stringify(error).includes(value));
+  }
+  const failed = { ...finished, status: 'failed', result: null, error: { code: key, message: privateUrl } };
+  const client = new api.FlowSpeechClient({ apiKey: key, fetch: async () => json(failed) });
+  const value = await client.getJob(jobId);
+  assert.equal(value.error.code, 'job_error');
+  assert.ok(!JSON.stringify(value).includes(privateUrl) && !JSON.stringify(value).includes(key));
+});
+
+test('built body failures retain permanent status and transient cooldown', async () => {
+  for (const status of [401, 429]) {
+    let calls = 0;
+    const client = new api.FlowSpeechClient({ apiKey: 'review-only', maxRetries: status === 401 ? 1 : 0,
+      fetch: async () => { calls++; return new Response(new ReadableStream({
+        start(controller) { controller.error(new Error('synthetic interrupted response')); },
+      }), { status, headers: { 'Retry-After': '30' } }); } });
+    await assert.rejects(client.generate(input, { requestId }), error =>
+      error.status === status && error.retryable === (status === 429) &&
+      error.retryAfterMs === 30000 && error.requestId === requestId);
+    assert.equal(calls, 1);
+  }
+});
+
 const requestId = '11111111-1111-4111-8111-111111111111'
 const jobId = '22222222-2222-4222-8222-222222222222'
 const input = { mode: 'single', text: 'Hello', voiceName: 'Kore' }

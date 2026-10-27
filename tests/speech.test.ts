@@ -10,6 +10,21 @@ function setup() {
   return { fetcher, adapter: flowspeechSpeech('flowspeech-tts', { apiKey: 'unit-test-only', fetch: fetcher }) }
 }
 describe('TanStack TTS adapter', () => {
+  it('does not forward reflected private error text to the host logger', async () => {
+    const secret = 'review_secret_canary'
+    const privateUrl = 'https://storage.example.test/private.wav?signature=review-only'
+    const fetcher = vi.fn<typeof fetch>(async () => json({
+      error: { code: secret, message: privateUrl }, traceId: privateUrl,
+    }, 403))
+    const adapter = flowspeechSpeech('flowspeech-tts', { apiKey: secret, fetch: fetcher })
+    const log = logger()
+    await expect(adapter.generateSpeech({ model: 'flowspeech-tts', text: 'Hello', logger: log })).rejects.toMatchObject({ status: 403 })
+    expect(log.errors).toHaveBeenCalled()
+    const args = vi.mocked(log.errors).mock.calls
+    expect(JSON.stringify(args)).not.toContain(secret)
+    expect(JSON.stringify(args)).not.toContain(privateUrl)
+    for (const value of args.flat()) expect(String(value)).not.toContain(privateUrl)
+  })
   it('preserves base64 WAV output through the real generateSpeech activity', async () => {
     const { fetcher, adapter } = setup()
     const pending = generateSpeech({ adapter, text: 'Hello', voice: 'Charon', format: 'wav', modelOptions: { requestId } })

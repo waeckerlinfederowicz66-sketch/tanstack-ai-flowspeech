@@ -59,6 +59,7 @@ export class FlowSpeechError extends Error {
   readonly name = 'FlowSpeechError'
   requestId?: string
   jobId?: string
+  retryAfterMs?: number
   constructor(
     message: string,
     readonly code: string,
@@ -144,7 +145,7 @@ function validateInput(input: FlowSpeechInput): FlowSpeechInput {
   return { mode: 'multi', segments }
 }
 
-function job(value: unknown, ctx: Context): FlowSpeechJob {
+function job(value: unknown, ctx: Context, token: (value: unknown) => string | undefined): FlowSpeechJob {
   if (!record(value)) fail('Malformed job')
   const id = uuid(value.id, 'job ID')
   if (ctx.jobId && ctx.jobId !== id) fail('Job ID changed unexpectedly')
@@ -165,7 +166,26 @@ function job(value: unknown, ctx: Context): FlowSpeechJob {
     }
     audioUrl(result.url)
   }
-  return { ...value, id, requestId } as unknown as FlowSpeechJob
+  const error = value.error == null ? value.error : {
+    code: token(record(value.error) ? value.error.code : undefined) ?? 'job_error',
+    message: 'FlowSpeech job failed',
+    ...(record(value.error) && typeof value.error.retryable === 'boolean' ? { retryable: value.error.retryable } : {}),
+  }
+  const metadata: Record<string, unknown> = {}
+  for (const name of ['createdAt', 'updatedAt', 'deadlineAt']) {
+    const item = value[name]
+    if (typeof item === 'string' && item.length === 24 && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(item) && Number.isFinite(Date.parse(item))) metadata[name] = item
+  }
+  if (record(value.progress) && number(value.progress.completed) && number(value.progress.total)) {
+    metadata.progress = { completed: value.progress.completed, total: value.progress.total }
+  }
+  return {
+    ...metadata,
+    id, requestId, status: value.status, usage: value.usage,
+    ...(value.result !== undefined ? { result: value.result } : {}),
+    ...(value.resultDeleted !== undefined ? { resultDeleted: value.resultDeleted } : {}),
+    ...(value.error !== undefined ? { error } : {}),
+  } as FlowSpeechJob
 }
 
 function retryAfter(value: string | null): number {
@@ -293,10 +313,13 @@ export class FlowSpeechClient {
   }
 
   private clean(value: unknown): string | undefined {
-    if (typeof value !== 'string') return undefined
-    let result = value.split(this.key).join('[redacted]')
-    for (const secret of this.headers.values()) if (secret) result = result.split(secret).join('[redacted]')
-    return result.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 500)
+    if (typeof value !== 'string' || value.length < 1 || value.length > 128 || /[^A-Za-z0-9_-]/.test(value) || value.includes(this.key)) return undefined
+    for (const secret of this.headers.values()) if (secret && value.includes(secret)) return undefined
+    return value
+  }
+
+  private job(value: unknown, ctx: Context): FlowSpeechJob {
+    return job(value, ctx, value => this.clean(value))
   }
 
   private async operation<T>(options: FlowSpeechOperationOptions, fn: (ctx: Context) => Promise<T>, jobId?: string): Promise<T> {
@@ -330,8 +353,9 @@ export class FlowSpeechClient {
       ctx.signal.addEventListener('abort', abort, { once: true })
       const timer = setTimeout(() => controller.abort(new FlowSpeechError('FlowSpeech request timed out', 'request_timeout', undefined, undefined, true)), this.requestTimeout)
       let delay = this.interval
+      let response: Response | undefined
       try {
-        const response = await abortable(this.fetcher(url, {
+        response = await abortable(this.fetcher(url, {
           ...init, signal: controller.signal, redirect: 'manual', credentials: 'omit', referrerPolicy: 'no-referrer',
         }), controller.signal)
         if (response.redirected || (response.status >= 300 && response.status < 400)) {
@@ -357,17 +381,22 @@ export class FlowSpeechClient {
         if (!response.ok) {
           const error = record(value) && record(value.error) ? value.error : {}
           const code = this.clean(error.code) ?? 'http_error'
-          const message = this.clean(error.message) ?? 'Request failed'
           const traceId = record(value) ? this.clean(value.traceId) : undefined
-          throw new FlowSpeechError('FlowSpeech API error (HTTP ' + response.status + '): ' + message, code, response.status, traceId,
-            error.retryable === true || (error.retryable !== false && (response.status === 429 || response.status >= 500)))
+          throw new FlowSpeechError('FlowSpeech API error (HTTP ' + response.status + ')', code, response.status, traceId,
+            error.retryable !== false && (response.status === 429 || response.status >= 500))
         }
         return { value, retryAfter: delay, headers: Object.fromEntries(response.headers) }
       } catch (error) {
         if (ctx.signal.aborted) throw ctx.signal.reason
-        const safe = error instanceof FlowSpeechError ? error
+        let safe = error instanceof FlowSpeechError ? error
           : controller.signal.aborted ? controller.signal.reason as FlowSpeechError
           : new FlowSpeechError('FlowSpeech network request failed', download ? 'download_error' : 'network_error', undefined, undefined, true)
+        // Headers remain authoritative even if the body stream or its cleanup fails.
+        if (response && safe.status === undefined) {
+          safe = new FlowSpeechError(safe.message, safe.code, response.status, safe.traceId,
+            safe.retryable && (response.ok || response.status === 429 || response.status >= 500))
+        }
+        if (response) safe.retryAfterMs = delay
         if (!safe.retryable || attempt >= this.retries) throw safe
       } finally {
         clearTimeout(timer)
@@ -393,11 +422,11 @@ export class FlowSpeechClient {
       const body = JSON.stringify({ input: validateInput(input) })
       if (Buffer.byteLength(body) > 1024 * 1024) fail('Input JSON exceeds 1 MiB', 'invalid_request')
       let response = await this.api('/tts/jobs', ctx, body, 'POST')
-      let current = job(response.value, ctx)
+      let current = this.job(response.value, ctx)
       while (!['success', 'failed', 'cancelled'].includes(current.status)) {
         await wait(response.retryAfter, ctx.signal)
         response = await this.api('/tts/jobs/' + ctx.jobId, ctx)
-        current = job(response.value, ctx)
+        current = this.job(response.value, ctx)
       }
       const audio = await this.audio(current, ctx)
       return { audio, job: current, requestId: ctx.requestId!, requestBody: body, headers: response.headers }
@@ -406,7 +435,7 @@ export class FlowSpeechClient {
 
   private async audio(current: FlowSpeechJob, ctx: Context): Promise<Uint8Array> {
     if (current.status === 'failed' || current.status === 'cancelled') {
-      throw new FlowSpeechError('FlowSpeech job ' + current.status + (current.error?.message ? ': ' + this.clean(current.error.message) : ''), this.clean(current.error?.code) ?? ('job_' + current.status))
+      throw new FlowSpeechError('FlowSpeech job ' + current.status, this.clean(current.error?.code) ?? ('job_' + current.status))
     }
     if (current.status !== 'success') fail('Job is not ready for download', 'job_not_ready')
     if (current.resultDeleted) fail('FlowSpeech result was deleted; no audio is available', 'result_deleted')
@@ -415,17 +444,17 @@ export class FlowSpeechClient {
   }
 
   async getJob(id: string, options: FlowSpeechOperationOptions = {}): Promise<FlowSpeechJob> {
-    return this.operation(options, async ctx => job((await this.api('/tts/jobs/' + ctx.jobId, ctx)).value, ctx), id)
+    return this.operation(options, async ctx => this.job((await this.api('/tts/jobs/' + ctx.jobId, ctx)).value, ctx), id)
   }
   async findJob(requestId: string, options: Omit<FlowSpeechOperationOptions, 'requestId'> = {}): Promise<FlowSpeechJob> {
-    return this.operation({ ...options, requestId }, async ctx => job((await this.api('/tts/jobs?requestId=' + ctx.requestId, ctx)).value, ctx))
+    return this.operation({ ...options, requestId }, async ctx => this.job((await this.api('/tts/jobs?requestId=' + ctx.requestId, ctx)).value, ctx))
   }
   async cancelJob(id: string, options: FlowSpeechOperationOptions = {}): Promise<FlowSpeechJob> {
-    return this.operation(options, async ctx => job((await this.api('/tts/jobs/' + ctx.jobId + '/cancel', ctx, undefined, 'POST')).value, ctx), id)
+    return this.operation(options, async ctx => this.job((await this.api('/tts/jobs/' + ctx.jobId + '/cancel', ctx, undefined, 'POST')).value, ctx), id)
   }
   /** Retries only the download of an existing successful job, never generation. */
   async downloadJob(current: FlowSpeechJob, options: FlowSpeechOperationOptions = {}): Promise<Uint8Array> {
-    return this.operation({ ...options, requestId: options.requestId ?? current.requestId }, async ctx => this.audio(job(current, ctx), ctx), current.id)
+    return this.operation({ ...options, requestId: options.requestId ?? current.requestId }, async ctx => this.audio(this.job(current, ctx), ctx), current.id)
   }
   async getQuota(options: FlowSpeechOperationOptions = {}): Promise<FlowSpeechQuota> {
     return this.operation(options, async ctx => {

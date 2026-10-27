@@ -1,5 +1,9 @@
 # TanStack AI FlowSpeech Adapter
 
+## Unreleased Security Follow-up
+
+HTTP and terminal-job errors use fixed local messages, including errors sent to the host logger. Bounded diagnostic tokens exclude the configured API key and API-only header values. An interrupted body retains HTTP status and Retry-After; permanent HTTP failures never retry. Errors may expose retryAfterMs alongside validated recovery IDs.
+
 A server-side FlowSpeech public API v1 adapter for TanStack AI's `generateSpeech` activity. The adapter waits for the asynchronous job and downloads WAV audio, then encodes those bytes locally as base64 to preserve TanStack's `TTSResult`. The v1 API itself does not return base64.
 
 ## Local installation

@@ -37,6 +37,6 @@ function scan(relative = '') {
 scan()
 assert.equal(pkg.version, '0.2.0')
 for (const file of ['dist/index.js', 'dist/index.d.ts', 'CHANGELOG.md']) assert.ok(lstatSync(join(root, file)).isFile())
-const tarball = pkg.name + '-' + pkg.version + '.tgz'
+const tarball = process.env.FLOWSPEECH_ARTIFACT_ARCHIVE ?? pkg.name + '-' + pkg.version + '.tgz'
 const sha256 = createHash('sha256').update(readFileSync(tarball)).digest('hex')
 console.log(JSON.stringify({ package: pkg.name, version: pkg.version, files: count, unpackedBytes: bytes, tarball, sha256, result: 'PASS: allowlist, credential patterns, fixture leakage, absolute paths and retired endpoint checks' }, null, 2))
